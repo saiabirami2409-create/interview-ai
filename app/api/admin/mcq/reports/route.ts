@@ -3,8 +3,6 @@ import { getServerSession } from "@/server/auth/session";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { getAdminQuestionReports } from "@/server/db/practice";
 
-export const dynamic = "force-dynamic";
-
 export async function GET(req: NextRequest) {
   try {
     const user = await getServerSession();

@@ -48,10 +48,14 @@ export function verifySessionToken(token: string): SessionUser | null {
 }
 
 export async function getServerSession(): Promise<SessionUser | null> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(COOKIE_NAME)?.value;
-  if (!token) return null;
-  return verifySessionToken(token);
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get(COOKIE_NAME)?.value;
+    if (!token) return null;
+    return verifySessionToken(token);
+  } catch {
+    return null;
+  }
 }
 
 export async function setSessionCookie(user: SessionUser) {
