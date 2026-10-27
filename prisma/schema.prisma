@@ -1,0 +1,513 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id            String          @id @default(cuid())
+  email         String          @unique
+  passwordHash  String
+  name          String
+  role          String          @default("STUDENT") // STUDENT, ADMIN
+  avatarUrl     String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  
+  profile       StudentProfile?
+  resumes       Resume[]
+  interviews    InterviewSession[]
+  topicProgress TopicProgress[]
+  auditEvents   AuditEvent[]
+  practiceSessions PracticeQuizSession[]
+  questionReports  QuestionReport[]
+  chatMessages     ChatMessage[]
+  chatConversations ChatConversation[]
+  hrRecordings     HrRecording[]
+  aptitudeAssessments AptitudeAssessment[]
+  projectInterviews ProjectInterview[]
+  questionHistories QuestionHistory[]
+  performanceReport CandidatePerformanceReport?
+
+  @@index([email])
+}
+
+model StudentProfile {
+  id              String          @id @default(cuid())
+  userId          String          @unique
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  college         String?
+  degree          String?
+  graduationYear  Int?
+  targetRole      String          @default("Software Engineer")
+  experienceLevel String          @default("FRESHER") // FRESHER, INTERMEDIATE, EXPERIENCED
+  targetCompanies String?
+  bio             String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  
+  skills          StudentSkill[]
+}
+
+model StudentSkill {
+  id              String         @id @default(cuid())
+  profileId       String
+  profile         StudentProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  skillName       String
+  proficiency     Int            @default(50) // 0 - 100
+  createdAt       DateTime       @default(now())
+
+  @@unique([profileId, skillName])
+}
+
+model Resume {
+  id              String             @id @default(cuid())
+  userId          String
+  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fileName        String
+  fileSize        Int
+  fileType        String
+  storagePath     String
+  extractedText   String?
+  extractedSkills String?            // JSON string of skills array
+  isPrimary       Boolean            @default(false)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  
+  interviews      InterviewSession[]
+
+  @@index([userId])
+}
+
+model InterviewSession {
+  id               String               @id @default(cuid())
+  userId           String
+  user             User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resumeId         String?
+  resume           Resume?              @relation(fields: [resumeId], references: [id], onDelete: SetNull)
+  
+  title            String
+  targetRole       String
+  companyName      String?
+  jobDescription   String?
+  interviewType    String               @default("TECHNICAL") // TECHNICAL, HR, BEHAVIORAL, PROJECT_BASED
+  difficulty       String               @default("INTERMEDIATE") // BEGINNER, INTERMEDIATE, ADVANCED
+  questionCount    Int                  @default(5)
+  timeLimitMinutes Int                  @default(30)
+  status           String               @default("DRAFT") // DRAFT, IN_PROGRESS, COMPLETED, ABANDONED
+  parentAssessmentId String?            // Links Round 2 Behavioral to Round 1 Technical Assessment
+  
+  // Multi-Round Scores & Mode
+  assessmentMode   String               @default("PRACTICE") // PRACTICE, EXAM
+  selectedTopics   String?              // JSON array
+  roundProgress    String?              // JSON object: { aptitude: "COMPLETED", technical: "COMPLETED", project: "COMPLETED", behavioral: "NOT_ATTEMPTED", hr: "NOT_ATTEMPTED" }
+  aptitudeScore    Float?
+  technicalScore   Float?
+  projectScore     Float?
+  behavioralScore  Float?
+  hrScore          Float?
+  overallScore     Float?
+
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  
+  questions        InterviewQuestion[]
+  report           InterviewReport?
+  hrRecordings     HrRecording[]
+
+  @@index([userId, status])
+  @@index([createdAt])
+}
+
+model InterviewQuestion {
+  id                 String             @id @default(cuid())
+  sessionId          String
+  session            InterviewSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  orderIndex         Int
+  questionText       String
+  category           String
+  difficulty         String             @default("INTERMEDIATE")
+  relevantSkills     String?            // JSON string array
+  expectedCriteria   String             // Rubric criteria for evaluator
+  hints              String?
+  createdAt          DateTime           @default(now())
+  
+  // MCQ Extensions
+  options            String?            // JSON map string: { "A": "...", "B": "...", "C": "...", "D": "..." }
+  correctOption      String?            // "A", "B", "C", or "D"
+  explanation        String?
+  topic              String?
+  
+  answer             InterviewAnswer?
+
+  @@unique([sessionId, orderIndex])
+  @@index([sessionId])
+}
+
+model InterviewAnswer {
+  id                 String            @id @default(cuid())
+  questionId         String            @unique
+  question           InterviewQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  answerText         String
+  timeSpentSec       Int               @default(0)
+  isSkipped          Boolean           @default(false)
+  submittedAt        DateTime          @default(now())
+  
+  // MCQ Extensions
+  selectedOption     String?           // "A", "B", "C", "D"
+  isCorrect          Boolean?
+  hintUsed           Boolean           @default(false)
+
+  // Behavioral Round Video/Audio Extensions
+  videoRecordingUrl  String?
+  audioDurationSec   Int?
+  isTextOnly         Boolean           @default(false)
+  userConsented      Boolean           @default(true)
+  deletedAt          DateTime?
+  
+  evaluation         AnswerEvaluation?
+}
+
+model AnswerEvaluation {
+  id                     String          @id @default(cuid())
+  answerId               String          @unique
+  answer                 InterviewAnswer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  
+  // 0 - 100 Multi-Dimensional Rubric Scores
+  relevanceScore         Int
+  technicalScore         Int
+  completenessScore      Int
+  communicationScore     Int
+  reasoningScore         Int
+  overallScore           Int
+  
+  strengths              String          // JSON array
+  weaknesses             String          // JSON array
+  missingConcepts        String          // JSON array
+  improvementSuggestions String          // JSON array
+  modelAnswerOutline     String
+  recommendedTopics      String          // JSON array
+  presentationFeedback   String?         // JSON string: optional presentation observations & timestamps (separate from content)
+  
+  // STAR & Behavioral Sub-Scores (0 - 5)
+  situationScore         Int?
+  taskScore              Int?
+  actionScore            Int?
+  resultScore            Int?
+  starRelevanceScore     Int?
+  
+  // HR Competency Sub-Scores (0 - 5)
+  hrRelevanceScore       Int?
+  hrClarityScore         Int?
+  hrExamplesScore        Int?
+  hrReasoningScore       Int?
+  hrAlignmentScore       Int?
+
+  createdAt              DateTime        @default(now())
+}
+
+model InterviewReport {
+  id                     String           @id @default(cuid())
+  sessionId              String           @unique
+  session                InterviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  overallScore           Int
+  technicalScore         Int
+  communicationScore     Int
+  relevanceScore         Int
+  completenessScore      Int
+
+  // Percentage Scores (0 - 100) per round
+  aptitudePercentage   Float?
+  technicalPercentage  Float?
+  projectPercentage    Float?
+  behavioralPercentage Float?
+  hrPercentage         Float?
+  overallPercentage    Float?
+  
+  readinessLevel         String           // e.g. "Placement Ready", "Needs Focused Polish", "Foundational Gaps"
+  readinessSummary       String
+  topStrengths           String           // JSON array
+  criticalWeaknesses     String           // JSON array
+  keyRecommendations     String           // JSON array
+  suggestedNextRole      String?
+  createdAt              DateTime         @default(now())
+}
+
+model PreparationTopic {
+  id          String         @id @default(cuid())
+  title       String         @unique
+  category    String
+  description String
+  difficulty  String         @default("INTERMEDIATE")
+  keyPoints   String         // JSON array
+  createdAt   DateTime       @default(now())
+  
+  progress    TopicProgress[]
+}
+
+model TopicProgress {
+  id          String           @id @default(cuid())
+  userId      String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topicId     String
+  topic       PreparationTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  priority    String           @default("MEDIUM") // HIGH, MEDIUM, LOW
+  mastery     Int              @default(0) // 0 - 100
+  sessionsHad Int              @default(0)
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([userId, topicId])
+}
+
+model AuditEvent {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String
+  details   String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// Technical MCQ Curated Question Bank & Accuracy Assurance
+model CuratedMcqQuestion {
+  id                 String             @id @default(cuid())
+  topic              String             // programming, dsa, databases, os, networking, system-design
+  subtopic           String?            // python, javascript, sql, indexing, concurrency, etc.
+  difficulty         String             @default("INTERMEDIATE") // BEGINNER, INTERMEDIATE, ADVANCED
+  question           String
+  codeSnippet        String?
+  language           String?            // python, javascript, sql, cpp, java
+  languageVersion    String?            // e.g. "Python 3.11+", "PostgreSQL 16", "ES2023"
+  isVersionDependent Boolean            @default(false)
+  versionWarning     String?            // e.g. "Python 3.7+ guarantees dict order"
+  options            String             // JSON array string of 4 choices [A, B, C, D]
+  correctOptionIndex Int                // 0, 1, 2, or 3
+  explanation        String             // Comprehensive verified explanation
+  optionExplanations String             // JSON map string: { "0": "...", "1": "...", "2": "...", "3": "..." }
+  referenceTitle     String?            // Reliable reference title (e.g. official docs, RFC, spec)
+  referenceUrl       String?            // Reliable reference URL
+  isReviewed         Boolean            @default(true)
+  reviewedBy         String?            // Senior Engineering Reviewer
+  verifiedAt         DateTime?
+  reviewerNotes      String?
+  status             String             @default("ACTIVE") // ACTIVE, UNDER_REVIEW, ARCHIVED
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  reports            QuestionReport[]
+  practiceAnswers    PracticeAnswer[]
+
+  @@index([topic, difficulty])
+  @@index([status])
+}
+
+// User Reporting & Admin Flawed Question Resolution Workflow
+model QuestionReport {
+  id                  String             @id @default(cuid())
+  questionId          String
+  question            CuratedMcqQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  userId              String?
+  user                User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userEmail           String?
+  reason              String             // AMBIGUOUS, INCORRECT_KEY, OUTDATED_VERSION, CODE_BUG, POOR_EXPLANATION, OTHER
+  userNotes           String
+  suggestedCorrection String?
+  status              String             @default("PENDING_REVIEW") // PENDING_REVIEW, IN_REVIEW, RESOLVED, DISMISSED
+  adminNotes          String?
+  reviewedBy          String?
+  resolvedAt          DateTime?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  @@index([questionId])
+  @@index([status])
+}
+
+// MCQ Practice Session Tracking & Topics to Revisit
+model PracticeQuizSession {
+  id               String           @id @default(cuid())
+  userId           String?
+  user             User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  topic            String
+  subtopics        String?          // JSON array of selected subtopics
+  difficulty       String           @default("ALL")
+  totalQuestions   Int
+  correctCount     Int              @default(0)
+  scorePercentage  Float            @default(0)
+  timeSpentSeconds Int              @default(0)
+  timeLimitMinutes Int?             // null = untimed
+  topicsToRevisit  String?          // JSON array of topics where user made errors
+  completedAt      DateTime?
+  createdAt        DateTime         @default(now())
+
+  answers          PracticeAnswer[]
+
+  @@index([userId, createdAt])
+}
+
+model PracticeAnswer {
+  id                  String              @id @default(cuid())
+  sessionId           String
+  session             PracticeQuizSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  questionId          String
+  question            CuratedMcqQuestion  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  selectedOptionIndex Int
+  isCorrect           Boolean
+  isBookmarked        Boolean             @default(false)
+  timeSpentSec        Int                 @default(0)
+  createdAt           DateTime            @default(now())
+
+  @@index([sessionId])
+  @@index([questionId])
+}
+
+model ChatConversation {
+  id        String        @id @default(cuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String        @default("New Conversation")
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  messages  ChatMessage[]
+
+  @@index([userId, updatedAt])
+}
+
+model ChatMessage {
+  id             String            @id @default(cuid())
+  userId         String
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversationId String?
+  conversation   ChatConversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         String            // "user" | "assistant"
+  message        String
+  context        String?           // e.g. "TECHNICAL", "BEHAVIORAL", "HR", "GENERAL"
+  createdAt      DateTime          @default(now())
+
+  @@index([userId, createdAt])
+  @@index([conversationId])
+}
+
+model HrRecording {
+  id           String            @id @default(cuid())
+  userId       String
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  hrSessionId  String?
+  session      InterviewSession? @relation(fields: [hrSessionId], references: [id], onDelete: SetNull)
+  title        String
+  jobRole      String?
+  fileLocation String
+  duration     Int               @default(0) // Duration in seconds
+  fileSize     Int               @default(0) // In bytes
+  mediaType    String            @default("video/webm")
+  status       String            @default("COMPLETED") // RECORDING, PROCESSING, COMPLETED, FAILED
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([hrSessionId])
+}
+
+// ROUND 1: Aptitude Assessment
+model AptitudeAssessment {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category         String   // "QUANTITATIVE", "LOGICAL", "VERBAL", "MIXED"
+  difficulty       String   @default("INTERMEDIATE") // BEGINNER, INTERMEDIATE, ADVANCED, MIXED
+  totalQuestions   Int
+  correctCount     Int      @default(0)
+  score            Float    @default(0) // Percentage 0 - 100
+  questions        String   // JSON string of generated questions
+  answers          String?  // JSON string of submitted user answers
+  correctAnswers   String   // JSON string of verified correct answer mapping
+  categoryScores   String?  // JSON string of breakdown by category
+  recommendations  String?  // JSON string of improvement suggestions
+  timeSpentSeconds Int      @default(0)
+  timeLimitMinutes Int      @default(20)
+  status           String   @default("IN_PROGRESS") // IN_PROGRESS, COMPLETED
+  startedAt        DateTime @default(now())
+  completedAt      DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+// ROUND 3: Project-Based Interview
+model ProjectInterview {
+  id                   String   @id @default(cuid())
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectDetails       String   // JSON string of project title, domain, tech, architecture, etc.
+  questions            String   // JSON string of project-grounded questions
+  candidateAnswers     String?  // JSON string of candidate responses
+  evaluations          String?  // JSON string of evaluations per question
+  score                Float    @default(0) // Overall percentage 0 - 100
+  understandingScore   Float?
+  technicalScore       Float?
+  problemSolvingScore  Float?
+  implementationScore  Float?
+  contributionScore    Float?
+  feedbackSummary      String?
+  strengths            String?  // JSON array
+  weaknesses           String?  // JSON array
+  recommendations      String?  // JSON array
+  status               String   @default("IN_PROGRESS") // IN_PROGRESS, COMPLETED
+  currentQuestionIndex Int      @default(0)
+  startedAt            DateTime @default(now())
+  completedAt          DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+// DUPLICATE QUESTION PREVENTION & TRACKING
+model QuestionHistory {
+  id                  String   @id @default(cuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  round               String   // "APTITUDE", "TECHNICAL", "PROJECT", "BEHAVIORAL", "HR"
+  questionText        String
+  questionFingerprint String
+  topic               String?
+  difficulty          String?
+  askedAt             DateTime @default(now())
+
+  @@index([userId, round])
+  @@index([questionFingerprint])
+  @@index([askedAt])
+}
+
+// 5-ROUND UNIFIED CANDIDATE PERFORMANCE REPORT
+model CandidatePerformanceReport {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  aptitudePercentage   Float?
+  technicalPercentage  Float?
+  projectPercentage    Float?
+  behavioralPercentage Float?
+  hrPercentage         Float?
+  overallPercentage    Float?
+  completedRoundsCount Int      @default(0)
+  strengths            String?  // JSON array
+  weaknesses           String?  // JSON array
+  recommendations      String?  // JSON array
+  updatedAt            DateTime @updatedAt
+  createdAt            DateTime @default(now())
+
+  @@index([userId])
+}
