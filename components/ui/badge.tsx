@@ -3,13 +3,13 @@ import { cn } from "@/lib/utils";
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
   variant?:
-    | "default"
-    | "secondary"
-    | "outline"
-    | "success"
-    | "warning"
-    | "cyan"
-    | "violet";
+  | "default"
+  | "secondary"
+  | "outline"
+  | "success"
+  | "warning"
+  | "cyan"
+  | "violet";
 }
 
 export function Badge({
@@ -44,4 +44,4 @@ export function Badge({
       {...props}
     />
   );
-}
+} sgvs
